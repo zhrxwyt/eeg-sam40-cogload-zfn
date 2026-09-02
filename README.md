@@ -20,7 +20,6 @@ Each condition contains three 25-second trials per participant, producing **480 
 - Dataset: [SAM-40 on Figshare](https://figshare.com/articles/dataset/SAM_40_Dataset_of_40_Subject_EEG_Recordings_to_Monitor_the_Induced-Stress_while_performing_Stroop_Color-Word_Test_Arithmetic_Task_and_Mirror_Image_Recognition_Task/14562090)
 - Dataset article: [Ghosh et al., 2022](https://doi.org/10.1016/j.dib.2021.107772)
 - Prefiltered EEG source used by the notebook: [wavesresearch/eeg_stress_detection](https://github.com/wavesresearch/eeg_stress_detection)
-- Pinned data revision: `b97846d42ba9453c1b8e0004afd3408671140759`
 
 Please cite the original dataset publication and comply with the dataset license and usage requirements. The dataset should be downloaded from its official source rather than redistributed in this repository.
 
