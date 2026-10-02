@@ -1,30 +1,26 @@
-# 🧠 HG-ZFN for Leakage-Aware EEG Cognitive Stress Classification
+# 🧠 EEG Stress Classification — Comparing 5 Models Across Two Datasets
 
-Developed by **LAO — 2026**
+Developed by **ZAHRA — 2026**
 
-This repository contains the implementation and evaluation of the **Hybrid Gated Zero-Dimension Feature Network (HG-ZFN)**, a hybrid temporal–spectral neural network developed for binary cognitive stress-task recognition from EEG signals. HG-ZFN extends the previously published Zero-Dimension Feature Network (ZFN) by combining raw EEG waveform learning with adaptively gated spectral-statistical descriptors. The proposed architecture is benchmarked against matched CNN, DNN, and RNN baselines.
+This repository contains my experiments adapting and comparing five deep learning architectures for binary stress classification (Relax vs. Stress) from EEG signals, evaluated with a leakage-aware, subject-independent Leave-One-Subject-Out (LOSO) cross-validation scheme (train-only preprocessing, subject-disjoint validation).
 
-The main experiment uses subject-independent **Leave-One-Subject-Out (LOSO)** cross-validation, train-only preprocessing, subject-disjoint validation, and trial-level prediction to reduce data leakage and provide a realistic estimate of performance on unseen participants.
+Models compared
+HG-ZFN — Hybrid Gated Zero-Dimension Feature Network
+ZFN — the original, lightweight feature-vector architecture
+CNN, DNN, RNN — baseline comparisons
 
-## 📊 Dataset Information
+The HG-ZFN/CNN/DNN/RNN architectures and the LOSO pipeline were developed by Laily Ade Oktaviana (original repository); the ZFN architecture was adapted from her EEG_Brainwave repository. The code in this repository is my own adaptation of that pipeline to run all five models on a second dataset and compare the results.
 
-This study uses the publicly available **SAM-40 EEG Stress Dataset** introduced by Ghosh et al. (2022). The dataset contains EEG recordings from **40 participants**, acquired through **32 channels at 128 Hz** while they completed four experimental conditions:
+Datasets
 
-- Relaxation
-- Stroop color-word test
-- Mirror-image recognition
-- Arithmetic task
+The first dataset is SAM-40 (Ghosh et al., 2022), which records 32-channel EEG at 128 Hz from 40 participants across four conditions — relaxation, the Stroop color-word test, a mirror-image recognition task, and an arithmetic task — with three 25-second trials per condition. The second dataset is the more recent Cognitive Load Assessment Through EEG dataset (Nirabi et al., 2025), which records 8-channel OpenBCI EEG from 15 participants performing Stroop and arithmetic tasks at four cognitive load levels; these levels were mapped to the same binary Relax/Stress labeling used for SAM-40 so that results from both datasets could be compared directly under the same five models and the same LOSO evaluation pipeline.
 
-Each condition contains three 25-second trials per participant, producing **480 EEG trials** in total. In the main binary task, relaxation trials are labeled **Relax**, while Stroop, mirror-image, and arithmetic trials are grouped as **Stress**.
+How to Run
 
-- Dataset: [SAM-40 on Figshare](https://figshare.com/articles/dataset/SAM_40_Dataset_of_40_Subject_EEG_Recordings_to_Monitor_the_Induced-Stress_while_performing_Stroop_Color-Word_Test_Arithmetic_Task_and_Mirror_Image_Recognition_Task/14562090)
-- Dataset article: [Ghosh et al., 2022](https://doi.org/10.1016/j.dib.2021.107772)
-- Prefiltered EEG source used by the notebook: [wavesresearch/eeg_stress_detection](https://github.com/wavesresearch/eeg_stress_detection)
+pip install numpy pandas scikit-learn mne mne_features tensorflow keras keras-tuner matplotlib seaborn scipy
+python 2026_CogLoad.py --model <hg-zfn|cnn|dnn|rnn|zfn|all> --data-dir <path-to-data> --output-dir <output-folder-name>
+python 2026_SAM40_zfn.py --model <hg-zfn|cnn|dnn|rnn|zfn|all> --data-dir <path-to-data> --output-dir <output-folder-name> 
 
-Please cite the original dataset publication and comply with the dataset license and usage requirements. The dataset should be downloaded from its official source rather than redistributed in this repository.
+Author
 
-## 📬 Contact
-
-For questions, research discussions, or collaborations, please contact:
-
-📧 [laoktaviana@gmail.com](mailto:laoktaviana@gmail.com)
+Prepared by Zahra Ramadhina [Biomedical Engineering, Telkom University] as part of a university assignment/thesis. Thank You!  
