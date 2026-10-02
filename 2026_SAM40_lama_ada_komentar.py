@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 """Leakage-aware HG-ZFN benchmark for binary EEG stress-task classification.
 
 This standalone script is the GitHub-ready version of the SAM-40 notebook. It
@@ -36,7 +36,7 @@ contains an inner validation fit followed by a full-development refit.
 from __future__ import annotations
 
 import matplotlib
-matplotlib.use("Agg")  
+matplotlib.use("Agg")  # cegah error Tcl/Tk saat generate PNG tanpa GUI
 
 import argparse
 import json
@@ -156,7 +156,7 @@ def enable_deterministic_tensorflow() -> None:
     """Enable deterministic TensorFlow operations when supported."""
     try:
         tf.config.experimental.enable_op_determinism()
-    except Exception as error:  
+    except Exception as error:  # pragma: no cover - depends on TF build
         print(f"Warning: TensorFlow op determinism is unavailable: {error}")
 
 
@@ -266,7 +266,7 @@ def load_sam40_trials(
         if clean_data.shape != (32, 3200):
             continue
 
-        raw_trials.append(np.nan_to_num(clean_data.T))  
+        raw_trials.append(np.nan_to_num(clean_data.T))  # time x channel
         four_class_labels.append(label)
         subjects.append(subject)
         filenames.append(path.name)

@@ -1,0 +1,2 @@
+model,accuracy,balanced_accuracy,macro_f1,stress_f1,roc_auc,subject_mean_accuracy,subject_accuracy_ci_low,subject_accuracy_ci_high,number_of_trial_decisions,debug_run
+dnn,0.6666666666666666,0.6111111111111112,0.5966386554621849,0.7647058823529411,0.8240740740740741,0.6666666666666666,0.6666666666666666,0.6666666666666666,24,True

@@ -1,0 +1,12 @@
+{
+  "accuracy": 0.6666666666666666,
+  "balanced_accuracy": 0.6111111111111112,
+  "macro_f1": 0.5966386554621849,
+  "stress_f1": 0.7647058823529411,
+  "roc_auc": 0.8240740740740741,
+  "subject_mean_accuracy": 0.6666666666666666,
+  "subject_accuracy_ci_low": 0.6666666666666666,
+  "subject_accuracy_ci_high": 0.6666666666666666,
+  "number_of_trial_decisions": 24,
+  "debug_run": true
+}

@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 """Leakage-aware HG-ZFN benchmark for binary EEG stress-task classification.
 
 This standalone script is the GitHub-ready version of the SAM-40 notebook. It
@@ -35,9 +35,6 @@ contains an inner validation fit followed by a full-development refit.
 
 from __future__ import annotations
 
-import matplotlib
-matplotlib.use("Agg")  
-
 import argparse
 import json
 import os
@@ -51,6 +48,8 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Iterable
 
+import matplotlib
+matplotlib.use("Agg")  # headless backend; avoids Tkinter/Tcl dependency
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -88,37 +87,34 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.models import Sequential
 
 
-DEFAULT_REPO_URL = "https://github.com/wavesresearch/eeg_stress_detection.git"
-DEFAULT_DATA_COMMIT = "b97846d42ba9453c1b8e0004afd3408671140759"
+# NOTE: adapted for the "Cognitive Load Assessment Through EEG" dataset
+# (Nirabi et al., Data in Brief, 2025; Mendeley kt38js3jv7) instead of SAM-40.
+DEFAULT_REPO_URL = None
+DEFAULT_DATA_COMMIT = ""
 
-SAMPLING_FREQUENCY = 128
+SAMPLING_FREQUENCY = 250  # OpenBCI Cyton recording rate for this dataset
 EPOCH_LENGTH = SAMPLING_FREQUENCY
-WINDOW_LENGTH = 512
-WINDOW_HOP = 256
+WINDOW_LENGTH = 500   # 2-second window at 250 Hz (trials are only 10-20s long)
+WINDOW_HOP = 250      # 1-second hop
 FREQUENCY_BANDS = [(1, 4), (4, 8), (8, 12), (12, 30), (30, 50)]
 
-CHANNEL_ORDER = [
-    "Cz", "Fz", "Fp1", "F7", "F3", "FC1", "C3", "FC5",
-    "FT9", "T7", "CP5", "CP1", "P3", "P7", "PO9", "O1",
-    "Pz", "Oz", "O2", "PO10", "P8", "P4", "CP2", "CP6",
-    "T8", "FT10", "FC6", "C4", "FC2", "F4", "F8", "Fp2",
-]
+# 8-channel OpenBCI Cyton montage used by this dataset (per dataset paper).
+CHANNEL_ORDER = ["Fp1", "Fp2", "F7", "F3", "FZ", "F4", "F8", "C2"]
 CHANNEL_INDEX = {name: index for index, name in enumerate(CHANNEL_ORDER)}
 SYMMETRIC_PAIRS = [
     ("Fp1", "Fp2"), ("F7", "F8"), ("F3", "F4"),
-    ("FC1", "FC2"), ("FC5", "FC6"), ("C3", "C4"),
-    ("T7", "T8"), ("CP5", "CP6"), ("CP1", "CP2"),
-    ("P3", "P4"), ("P7", "P8"), ("O1", "O2"),
-    ("PO9", "PO10"), ("FT9", "FT10"),
 ]
 SYMMETRIC_PAIR_INDEX = [
     (CHANNEL_INDEX[left], CHANNEL_INDEX[right])
     for left, right in SYMMETRIC_PAIRS
 ]
+# Binary task only: natural (baseline) = Relax(0), any load level = Stress(1).
 LABEL_PRIORITY = [
-    ("relaxing", 0), ("relax", 0), ("stroop", 1),
-    ("mirror_image", 2), ("mirror", 2), ("arithmetic", 3),
+    ("natural", 0), ("lowlevel", 1), ("midlevel", 1), ("highlevel", 1),
 ]
+
+TOTAL_SUBJECTS = 15
+TRIALS_PER_SUBJECT = 8  # 2 tasks (Arithmetic, Stroop) x 4 levels, confirmed by run log
 
 
 @dataclass(frozen=True)
@@ -156,7 +152,7 @@ def enable_deterministic_tensorflow() -> None:
     """Enable deterministic TensorFlow operations when supported."""
     try:
         tf.config.experimental.enable_op_determinism()
-    except Exception as error:  
+    except Exception as error:  # pragma: no cover - depends on TF build
         print(f"Warning: TensorFlow op determinism is unavailable: {error}")
 
 
@@ -230,63 +226,74 @@ def label_from_filename(filename: str) -> int | None:
 
 
 def subject_from_filename(filename: str) -> int | None:
-    lowered = filename.lower()
-    patterns = [r"sub[_\-]?(\d+)", r"subject[_\-]?(\d+)", r"s(\d+)"]
-    for pattern in patterns:
-        match = re.search(pattern, lowered)
-        if match:
-            return int(match.group(1))
+    # Cognitive Load filenames look like "natural-9.txt", "lowlevel-3.txt".
+    stem = Path(filename).stem.lower()
+    match = re.search(r"-(\d+)$", stem)
+    if match:
+        return int(match.group(1))
     return None
 
 
-def load_sam40_trials(
+def load_cogload_trials(
     data_directory: Path,
     task: str,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
-    """Load validated 32 x 3200 prefiltered SAM-40 trials."""
+) -> tuple[list[np.ndarray], np.ndarray, np.ndarray, list[str]]:
+    """Load raw OpenBCI Cyton trials from the Cognitive Load EEG dataset.
+
+    Each .txt file is a raw OpenBCI GUI export (no header row): column 0 is
+    the sample index, columns 1-8 are the 8 EXG channels (Fp1, Fp2, F7, F3,
+    FZ, F4, F8, C2 in that order), the remaining columns are accelerometer /
+    analog / timestamp channels that are not used here. Trials have variable
+    duration (10-20s), so trials are returned as a *list* of (time, channel)
+    arrays rather than a single stacked array.
+    """
     raw_trials: list[np.ndarray] = []
-    four_class_labels: list[int] = []
+    binary_labels: list[int] = []
     subjects: list[int] = []
     filenames: list[str] = []
 
-    mat_files = sorted(data_directory.glob("*.mat"))
-    if not mat_files:
-        raise FileNotFoundError(f"No .mat files found in {data_directory}")
+    txt_files = sorted(data_directory.rglob("*.txt"))
+    if not txt_files:
+        raise FileNotFoundError(f"No .txt files found under {data_directory}")
 
-    for path in mat_files:
+    for path in txt_files:
         label = label_from_filename(path.name)
         subject = subject_from_filename(path.name)
         if label is None or subject is None:
             continue
 
-        matlab_data = scipy.io.loadmat(path)
-        if "Clean_data" not in matlab_data:
-            continue
-        clean_data = np.asarray(matlab_data["Clean_data"], dtype=np.float32)
-        if clean_data.shape != (32, 3200):
-            continue
+        rows: list[list[float]] = []
+        with open(path, "r", encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                parts = line.strip().split(",")
+                if len(parts) < 9:
+                    continue
+                try:
+                    eeg_values = [float(parts[i]) for i in range(1, 9)]
+                except ValueError:
+                    continue  # skip any stray header/metadata line
+                rows.append(eeg_values)
 
-        raw_trials.append(np.nan_to_num(clean_data.T))  
-        four_class_labels.append(label)
+        if len(rows) < WINDOW_LENGTH:
+            continue  # trial too short to form even one window
+
+        trial_array = np.nan_to_num(
+            np.asarray(rows, dtype=np.float32)
+        )  # time x channel, matches SAM-40 loader's orientation
+        raw_trials.append(trial_array)
+        binary_labels.append(label)
         subjects.append(subject)
         filenames.append(path.name)
 
-    raw = np.asarray(raw_trials, dtype=np.float32)
-    label4 = np.asarray(four_class_labels, dtype=np.int64)
+    target = np.asarray(binary_labels, dtype=np.int64)
     subject_id = np.asarray(subjects, dtype=np.int64)
-    target = (label4 != 0).astype(np.int64) if task == "binary" else label4
-
-    if len(raw) != 480 or len(np.unique(subject_id)) != 40:
-        raise ValueError(
-            "Expected 480 valid trials from 40 participants, but found "
-            f"{len(raw)} trials from {len(np.unique(subject_id))} participants."
-        )
 
     print(
-        f"Loaded {len(raw)} trials from {len(np.unique(subject_id))} participants "
-        f"with labels {dict(sorted(Counter(target.tolist()).items()))}."
+        f"Loaded {len(raw_trials)} trials from "
+        f"{len(np.unique(subject_id))} participants with labels "
+        f"{dict(sorted(Counter(target.tolist()).items()))}."
     )
-    return raw, target, subject_id, filenames
+    return raw_trials, target, subject_id, filenames
 
 
 def hjorth_parameters(samples: np.ndarray) -> tuple[float, float, float]:
@@ -332,7 +339,14 @@ def absolute_band_power(
 
 
 def extract_epoch_features(epoch: np.ndarray) -> np.ndarray:
-    """Extract 678 spectral-statistical descriptors from one 32 x 128 epoch."""
+    """Extract spectral-statistical descriptors from one channel x samples epoch.
+
+    Feature count is 19 per channel (3 Hjorth + mean/std/rms + 5 relative
+    band power + 5 differential entropy + 3 ratios) plus 5 asymmetry
+    features per symmetric channel pair. For the original 32-channel SAM-40
+    montage with 14 pairs this is 678; for the 8-channel Cognitive Load
+    montage with 3 pairs this is 167.
+    """
     features: list[float] = []
     band_power = np.zeros((epoch.shape[0], len(FREQUENCY_BANDS)))
 
@@ -372,9 +386,13 @@ def extract_epoch_features(epoch: np.ndarray) -> np.ndarray:
         features.extend(asymmetry.tolist())
 
     feature_array = np.asarray(features, dtype=np.float32)
-    if feature_array.shape != (678,):
+    expected_feature_count = epoch.shape[0] * 19 + len(SYMMETRIC_PAIR_INDEX) * len(
+        FREQUENCY_BANDS
+    )
+    if feature_array.shape != (expected_feature_count,):
         raise RuntimeError(
-            f"Expected 678 epoch features, received {feature_array.shape}."
+            f"Expected {expected_feature_count} epoch features, "
+            f"received {feature_array.shape}."
         )
     return feature_array
 
@@ -491,6 +509,24 @@ def build_dnn(number_of_features: int, number_of_classes: int) -> Model:
             Dense(number_of_classes, activation="softmax"),
         ],
         name="DNN",
+    )
+
+
+def build_zfn(number_of_features: int, number_of_classes: int) -> Model:
+    """Original ZFN architecture (Oktaviana & Pamukti, EEG_Brainwave/Algoritma_ZFN),
+    plugged into this LOSO benchmark pipeline unchanged: a lightweight feature-vector
+    network (256 -> dropout -> 128 -> 64 -> softmax), originally validated for
+    multi-class EEG emotion recognition on SEED, prized for training speed."""
+    return Sequential(
+        [
+            Input((number_of_features,)),
+            Dense(256, activation="relu"),
+            Dropout(0.3),
+            Dense(128, activation="relu"),
+            Dense(64, activation="relu"),
+            Dense(number_of_classes, activation="softmax"),
+        ],
+        name="ZFN",
     )
 
 
@@ -666,7 +702,7 @@ def learning_rate_callback() -> tf.keras.callbacks.Callback:
 def validation_callbacks() -> list[tf.keras.callbacks.Callback]:
     return [
         tf.keras.callbacks.EarlyStopping(
-            monitor="val_loss", patience=50, restore_best_weights=True
+            monitor="val_loss", patience=15, restore_best_weights=True
         ),
         learning_rate_callback(),
     ]
@@ -726,7 +762,7 @@ def merge_fold_results(
 
 
 def model_family(model_name: str) -> str:
-    if model_name == "dnn":
+    if model_name in {"dnn", "zfn"}:
         return "feature"
     if model_name in {"cnn", "rnn"}:
         return "raw"
@@ -743,6 +779,8 @@ def build_selected_model(
 ) -> Model:
     if model_name == "dnn" and feature_shape is not None:
         return build_dnn(feature_shape, number_of_classes)
+    if model_name == "zfn" and feature_shape is not None:
+        return build_zfn(feature_shape, number_of_classes)
     if model_name == "cnn" and raw_shape is not None:
         return build_cnn(raw_shape, number_of_classes)
     if model_name == "rnn" and raw_shape is not None:
@@ -954,7 +992,11 @@ def run_subject_independent_loso(
         )
 
     merged = merge_fold_results(fold_results)
-    expected_trials = 480 if config.debug_folds is None else 12 * len(splits)
+    expected_trials = (
+        TOTAL_SUBJECTS * TRIALS_PER_SUBJECT
+        if config.debug_folds is None
+        else TRIALS_PER_SUBJECT * len(splits)
+    )
     if len(np.unique(merged["trial"])) != expected_trials:
         raise RuntimeError(
             f"{model_name}: expected {expected_trials} trial decisions, "
@@ -1385,7 +1427,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        choices=["hg-zfn", "cnn", "dnn", "rnn", "all"],
+        choices=["hg-zfn", "cnn", "dnn", "rnn", "zfn", "all"],
         default="hg-zfn",
         help="Model to evaluate; default: hg-zfn.",
     )
@@ -1449,8 +1491,11 @@ def parse_arguments() -> argparse.Namespace:
 
 def main() -> None:
     arguments = parse_arguments()
-    if arguments.debug_folds is not None and not 1 <= arguments.debug_folds <= 40:
-        raise ValueError("--debug-folds must be between 1 and 40.")
+    if (
+        arguments.debug_folds is not None
+        and not 1 <= arguments.debug_folds <= TOTAL_SUBJECTS
+    ):
+        raise ValueError(f"--debug-folds must be between 1 and {TOTAL_SUBJECTS}.")
 
     config = ExperimentConfig(
         task=arguments.task,
@@ -1476,7 +1521,7 @@ def main() -> None:
     print(f"Dataset directory: {data_directory}")
     print(f"Dataset revision: {dataset_revision}")
 
-    raw_trials, trial_labels, trial_subjects, _ = load_sam40_trials(
+    raw_trials, trial_labels, trial_subjects, _ = load_cogload_trials(
         data_directory, config.task
     )
     feature_windows, raw_windows, labels, subjects, trials = create_windows(
@@ -1488,7 +1533,7 @@ def main() -> None:
     )
 
     selected_models = (
-        ["hg-zfn", "cnn", "dnn", "rnn"]
+        ["hg-zfn", "cnn", "dnn", "rnn", "zfn"]
         if arguments.model == "all"
         else [arguments.model]
     )

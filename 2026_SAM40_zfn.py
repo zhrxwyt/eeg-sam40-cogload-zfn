@@ -35,9 +35,6 @@ contains an inner validation fit followed by a full-development refit.
 
 from __future__ import annotations
 
-import matplotlib
-matplotlib.use("Agg")  
-
 import argparse
 import json
 import os
@@ -51,6 +48,8 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Iterable
 
+import matplotlib
+matplotlib.use("Agg")  
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -494,6 +493,24 @@ def build_dnn(number_of_features: int, number_of_classes: int) -> Model:
     )
 
 
+def build_zfn(number_of_features: int, number_of_classes: int) -> Model:
+    """Original ZFN architecture (Oktaviana & Pamukti, EEG_Brainwave/Algoritma_ZFN),
+    plugged into this LOSO benchmark pipeline unchanged: a lightweight feature-vector
+    network (256 -> dropout -> 128 -> 64 -> softmax), originally validated for
+    multi-class EEG emotion recognition on SEED, prized for training speed."""
+    return Sequential(
+        [
+            Input((number_of_features,)),
+            Dense(256, activation="relu"),
+            Dropout(0.3),
+            Dense(128, activation="relu"),
+            Dense(64, activation="relu"),
+            Dense(number_of_classes, activation="softmax"),
+        ],
+        name="ZFN",
+    )
+
+
 def build_cnn(raw_shape: tuple[int, ...], number_of_classes: int) -> Model:
     inputs = Input(raw_shape, name="raw")
     output = Conv1D(32, 9, padding="same", activation="gelu")(inputs)
@@ -726,7 +743,7 @@ def merge_fold_results(
 
 
 def model_family(model_name: str) -> str:
-    if model_name == "dnn":
+    if model_name in {"dnn", "zfn"}:
         return "feature"
     if model_name in {"cnn", "rnn"}:
         return "raw"
@@ -743,6 +760,8 @@ def build_selected_model(
 ) -> Model:
     if model_name == "dnn" and feature_shape is not None:
         return build_dnn(feature_shape, number_of_classes)
+    if model_name == "zfn" and feature_shape is not None:
+        return build_zfn(feature_shape, number_of_classes)
     if model_name == "cnn" and raw_shape is not None:
         return build_cnn(raw_shape, number_of_classes)
     if model_name == "rnn" and raw_shape is not None:
@@ -1385,7 +1404,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        choices=["hg-zfn", "cnn", "dnn", "rnn", "all"],
+        choices=["hg-zfn", "cnn", "dnn", "rnn", "zfn", "all"],
         default="hg-zfn",
         help="Model to evaluate; default: hg-zfn.",
     )
@@ -1488,7 +1507,7 @@ def main() -> None:
     )
 
     selected_models = (
-        ["hg-zfn", "cnn", "dnn", "rnn"]
+        ["hg-zfn", "cnn", "dnn", "rnn", "zfn"]
         if arguments.model == "all"
         else [arguments.model]
     )

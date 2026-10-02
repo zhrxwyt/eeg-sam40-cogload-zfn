@@ -1,0 +1,34 @@
+{
+  "dataset_revision": "external-directory",
+  "tensorflow_version": "2.21.0",
+  "config": {
+    "task": "binary",
+    "seed": 42,
+    "maximum_epochs": 120,
+    "inner_validation_subjects": 5,
+    "batch_size": 64,
+    "learning_rate": 0.0003,
+    "selected_features": 150,
+    "figure_dpi": 300,
+    "debug_folds": 2,
+    "save_fold_models": false
+  },
+  "arguments": {
+    "model": "dnn",
+    "task": "binary",
+    "data_dir": "data\\eeg_stress_detection\\Data\\filtered_data",
+    "clone_dir": "data\\eeg_stress_detection",
+    "repo_url": "https://github.com/wavesresearch/eeg_stress_detection.git",
+    "data_commit": "b97846d42ba9453c1b8e0004afd3408671140759",
+    "output_dir": "test_cepat",
+    "seed": 42,
+    "max_epochs": 120,
+    "inner_val_subjects": 5,
+    "batch_size": 64,
+    "learning_rate": 0.0003,
+    "selected_features": 150,
+    "figure_dpi": 300,
+    "debug_folds": 2,
+    "save_fold_models": false
+  }
+}

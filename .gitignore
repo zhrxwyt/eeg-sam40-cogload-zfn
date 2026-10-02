@@ -1,0 +1,7 @@
+data
+raw_data
+output_results_*
+.venv
+.venv-1
+__pycache__
+*.pyc 
